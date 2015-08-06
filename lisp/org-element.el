@@ -930,7 +930,9 @@ Assume point is at beginning of the headline."
 		 (goto-char (match-end 0))))
 	   (title-start (point))
 	   (tags (when (re-search-forward
-			(org-re "[ \t]+\\(:[[:alnum:]_@#%:]+:\\)[ \t]*$")
+			(org-re "[ \t]+"
+				org-heading-tags-re
+				"[ \t]*$")
 			(line-end-position)
 			'move)
 		   (goto-char (match-beginning 0))
@@ -1073,7 +1075,9 @@ Assume point is at beginning of the inline task."
 				 (aref (match-string 0) 2))))
 	   (title-start (point))
 	   (tags (when (re-search-forward
-			(org-re "[ \t]+\\(:[[:alnum:]_@#%:]+:\\)[ \t]*$")
+			(org-re "[ \t]+"
+				org-heading-tags-re
+				"[ \t]*$")
 			(line-end-position)
 			'move)
 		   (goto-char (match-beginning 0))

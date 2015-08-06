@@ -5089,12 +5089,16 @@ of what a project is and how to check if it stuck, customize the variable
 	 (tags (nth 2 org-stuck-projects))
 	 (tags-re (if (member "*" tags)
 		      (concat org-outline-regexp-bol
-			      (org-re ".*:[[:alnum:]_@#%]+:[ \t]*$"))
+			      (org-re ".*"
+				      org-heading-tags-re
+				      "[ \t]*$"))
 		    (if tags
 			(concat org-outline-regexp-bol
 				".*:\\("
 				(mapconcat 'identity tags "\\|")
-				(org-re "\\):[[:alnum:]_@#%:]*[ \t]*$")))))
+				(org-re "\\)"
+					org-heading-tags-re
+					"[ \t]*$")))))
 	 (gen-re (nth 3 org-stuck-projects))
 	 (re-list
 	  (delq nil
@@ -6537,7 +6541,9 @@ Any match of REMOVE-RE will be removed from TXT."
 	    (setq duration (- (org-hh:mm-string-to-minutes s2)
 			      (org-hh:mm-string-to-minutes s1)))))
 
-	(when (string-match (org-re "\\([ \t]+\\)\\(:[[:alnum:]_@#%:]+:\\)[ \t]*$")
+	(when (string-match (org-re "\\([ \t]+\\)"
+				    org-heading-tags-re
+				    "[ \t]*$")
 			    txt)
 	  ;; Tags are in the string
 	  (if (or (eq org-agenda-remove-tags t)
@@ -6613,7 +6619,9 @@ Any match of REMOVE-RE will be removed from TXT."
 The modified list may contain inherited tags, and tags matched by
 `org-agenda-hide-tags-regexp' will be removed."
   (when (or add-inherited hide-re)
-    (if (string-match (org-re "\\([ \t]+\\)\\(:[[:alnum:]_@#%:]+:\\)[ \t]*$") txt)
+    (if (string-match (org-re "\\([ \t]+\\)"
+			      org-heading-tags-re
+			      "[ \t]*$") txt)
 	(setq txt (substring txt 0 (match-beginning 0))))
     (setq tags
 	  (delq nil
@@ -8951,7 +8959,9 @@ If FORCE-TAGS is non nil, the car of it returns the new tags."
   (let ((inhibit-read-only t) l c)
     (save-excursion
       (goto-char (if line (point-at-bol) (point-min)))
-      (while (re-search-forward (org-re "\\([ \t]+\\)\\(:[[:alnum:]_@#%:]+:\\)[ \t]*$")
+      (while (re-search-forward (org-re "\\([ \t]+\\)"
+					org-heading-tags-re
+					"[ \t]*$")
 				(if line (point-at-eol) nil) t)
 	(add-text-properties
 	 (match-beginning 2) (match-end 2)

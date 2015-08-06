@@ -517,6 +517,16 @@ This regexp can match any headline with the specified keyword, or
 without a keyword.  The keyword isn't in any group by default,
 but the stars and the body are.")
 
+;; the double % is harmless when this is treated as a regular
+;; expression, and necessary when it is being treated as a format
+;; string
+(defconst org-heading-tags-re
+  "\\(:\\([[:alnum:]_@#%%:=^()]+\\):\\)"
+  "The regular expression matching the tags in an org headline.
+The first match-string produced is the entire tags expression,
+the second match-string is everything inside the outer pair of
+colons.")
+
 (defconst org-archive-tag "ARCHIVE"
   "The tag that marks a subtree as archived.
 An archived subtree does not open during visibility cycling, and does
@@ -5067,14 +5077,16 @@ related expressions."
 	      org-todo-line-regexp
 	      (format org-heading-keyword-maybe-regexp-format org-todo-regexp)
 	      org-complex-heading-regexp
-	      (concat "^\\(\\*+\\)"
+	      (org-re "^\\(\\*+\\)"
 		      "\\(?: +" org-todo-regexp "\\)?"
 		      "\\(?: +\\(\\[#.\\]\\)\\)?"
 		      "\\(?: +\\(.*?\\)\\)??"
-		      (org-re "\\(?:[ \t]+\\(:[[:alnum:]_@#%:]+:\\)\\)?")
+		      "\\(?:[ \t]+"
+		      org-heading-tags-re
+		      "\\)?"
 		      "[ \t]*$")
 	      org-complex-heading-regexp-format
-	      (concat "^\\(\\*+\\)"
+	      (org-re "^\\(\\*+\\)"
 		      "\\(?: +" org-todo-regexp "\\)?"
 		      "\\(?: +\\(\\[#.\\]\\)\\)?"
 		      "\\(?: +"
@@ -5083,13 +5095,17 @@ related expressions."
 		      "\\(%s\\)"
 		      "\\(?: *\\[[0-9%%/]+\\]\\)*"
 		      "\\)"
-		      (org-re "\\(?:[ \t]+\\(:[[:alnum:]_@#%%:]+:\\)\\)?")
+		      "\\(?:[ \t]+"
+		      org-heading-tags-re
+		      "\\)?"
 		      "[ \t]*$")
 	      org-todo-line-tags-regexp
-	      (concat "^\\(\\*+\\)"
+	      (org-re "^\\(\\*+\\)"
 		      "\\(?: +" org-todo-regexp "\\)?"
 		      "\\(?: +\\(.*?\\)\\)??"
-		      (org-re "\\(?:[ \t]+\\(:[[:alnum:]:_@#%]+:\\)\\)?")
+		      "\\(?:[ \t]+"
+		      org-heading-tags-re
+		      "\\)?"
 		      "[ \t]*$"))
 	(org-compute-latex-and-related-regexp)))))
 
@@ -6220,7 +6236,10 @@ done, nil otherwise."
     (font-lock-mode 1)))
 
 (defun org-activate-tags (limit)
-  (if (re-search-forward (org-re "^\\*+.*[ \t]\\(:[[:alnum:]_@#%:]+:\\)[ \r\n]") limit t)
+  (if (re-search-forward (org-re "^\\*+.*[ \t]"
+				 org-heading-tags-re
+				 "[ \r\n]")
+			 limit t)
       (progn
 	(org-remove-flyspell-overlays-in (match-beginning 1) (match-end 1))
 	(add-text-properties (match-beginning 1) (match-end 1)
@@ -7902,9 +7921,11 @@ When NO-TODO is non-nil, don't include TODO keywords."
       (looking-at org-complex-heading-regexp)
       (match-string 4))
      (no-tags
-      (looking-at (concat org-outline-regexp
+      (looking-at (org-re org-outline-regexp
 			  "\\(.*?\\)"
-			  "\\(?:[ \t]+:[[:alnum:]:_@#%]+:\\)?[ \t]*$"))
+			  "\\(?:[ \t]+"
+			  org-heading-tags-re
+			  "\\)?[ \t]*$"))
       (match-string 1))
      (no-todo
       (looking-at org-todo-line-regexp)
@@ -11125,7 +11146,9 @@ of matched result, with is either `dedicated' or `fuzzy'."
 						   (concat sep "+"))))
 			     (if starred (substring title 1) title))
 			   sep "*"
-			   (org-re "\\(?:[ \t]+:[[:alnum:]_@#%%:]+:\\)?")
+			   (org-re "\\(?:[ \t]+"
+				   org-heading-tags-re
+				   "\\)?")
 			   "[ \t]*$")))
 		 (goto-char (point-min))
 		 (re-search-forward re nil t)))
@@ -14200,7 +14223,10 @@ headlines matching this string."
 		       org-outline-regexp)
 		     " *\\(\\<\\("
 		     (mapconcat 'regexp-quote org-todo-keywords-1 "\\|")
-		     (org-re "\\)\\>\\)? *\\(.*?\\)\\(:[[:alnum:]_@#%:]+:\\)?[ \t]*$")))
+		     (org-re "\\)\\>\\)? *\\(.*?\\)"
+			     org-heading-tags-re
+			     "?[ \t]*$")
+		     ))
 	 (props (list 'face 'default
 		      'done-face 'org-agenda-done
 		      'undone-face 'default
@@ -14802,7 +14828,9 @@ ignore inherited ones."
 		    (while (not (equal lastpos (point)))
 		      (setq lastpos (point))
 		      (when (looking-at
-			     (org-re "[^\r\n]+?:\\([[:alnum:]_@#%:]+\\):[ \t]*$"))
+			     (org-re "[^\r\n]+?"
+				     org-heading-tags-re
+				     "[ \t]*$"))
 			(setq ltags (org-split-string
 				     (org-match-string-no-properties 1) ":"))
 			(when parent
@@ -14834,7 +14862,9 @@ If ONOFF is `on' or `off', don't toggle but set to this state."
   (let (res current)
     (save-excursion
       (org-back-to-heading t)
-      (if (re-search-forward (org-re "[ \t]:\\([[:alnum:]_@#%:]+\\):[ \t]*$")
+      (if (re-search-forward (org-re "[ \t]"
+				     org-heading-tags-re
+				     "[ \t]*$")
 			     (point-at-eol) t)
 	  (progn
 	    (setq current (match-string 1))
@@ -14865,7 +14895,9 @@ If ONOFF is `on' or `off', don't toggle but set to this state."
   "Align tags on the current headline to TO-COL."
   (let ((pos (point)) (col (current-column)) ncol tags-l p)
     (beginning-of-line 1)
-    (if	(and (looking-at (org-re ".*?\\([ \t]+\\)\\(:[[:alnum:]_@#%:]+:\\)[ \t]*$"))
+    (if	(and (looking-at (org-re ".*?\\([ \t]+\\)"
+				 org-heading-tags-re
+				 "[ \t]*$"))
 	     (< pos (match-beginning 2)))
 	(progn
 	  (setq tags-l (- (match-end 2) (match-beginning 2)))
@@ -15168,7 +15200,9 @@ Returns the new tags string, or nil to not change the current settings."
     (save-excursion
       (beginning-of-line 1)
       (if (looking-at
-	   (org-re ".*[ \t]\\(:[[:alnum:]_@#%:]+:\\)[ \t]*$"))
+	   (org-re ".*[ \t]"
+		   org-heading-tags-re
+		   "[ \t]*$"))
 	  (setq ov-start (match-beginning 1)
 		ov-end (match-end 1)
 		ov-prefix "")
@@ -15348,7 +15382,9 @@ Returns the new tags string, or nil to not change the current settings."
     (user-error "Not on a heading"))
   (save-excursion
     (beginning-of-line 1)
-    (if (looking-at (org-re ".*[ \t]\\(:[[:alnum:]_@#%:]+:\\)[ \t]*$"))
+    (if (looking-at (org-re ".*[ \t]"
+			    org-heading-tags-re
+			    "[ \t]*$"))
 	(org-match-string-no-properties 1)
       "")))
 
@@ -15362,7 +15398,8 @@ Returns the new tags string, or nil to not change the current settings."
    (goto-char (point-min))
    (let ((tag-re (concat org-outline-regexp-bol
 			 "\\(?:.*?[ \t]\\)?"
-			 (org-re ":\\([[:alnum:]_@#%:]+\\):[ \t]*$")))
+			 (org-re org-heading-tags-re
+				 "[ \t]*$")))
 	 tags)
      (while (re-search-forward tag-re nil t)
        (dolist (tag (org-split-string (org-match-string-no-properties 1) ":"))
@@ -23922,7 +23959,9 @@ the cursor is already beyond the end of the headline."
 	 ((memq type '(headline inlinetask))
 	  (let ((pos (point)))
 	    (beginning-of-line 1)
-	    (if (looking-at (org-re ".*?\\(?:\\([ \t]*\\)\\(:[[:alnum:]_@#%:]+:\\)?[ \t]*\\)?$"))
+	    (if (looking-at (org-re ".*?\\(?:\\([ \t]*\\)"
+				    org-heading-tags-re
+				    "?[ \t]*\\)?$"))
 		(if (eq special t)
 		    (if (or (< pos (match-beginning 1)) (= pos (match-end 0)))
 			(goto-char (match-beginning 1))
@@ -24005,7 +24044,9 @@ depending on context."
 	    (user-error "C-k aborted as it would kill a hidden subtree")))
     (call-interactively
      (if (org-bound-and-true-p visual-line-mode) 'kill-visual-line 'kill-line)))
-   ((looking-at (org-re ".*?\\S-\\([ \t]+\\(:[[:alnum:]_@#%:]+:\\)\\)[ \t]*$"))
+   ((looking-at (org-re ".*?\\S-\\([ \t]+"
+			org-heading-tags-re
+			"\\)[ \t]*$"))
     (kill-region (point) (match-beginning 1))
     (org-set-tags nil t))
    (t (kill-region (point) (point-at-eol)))))

@@ -96,10 +96,10 @@ Otherwise return nil."
 	(setq ss (replace-match "\001-@[-`{-~" t t ss)))
       ss)))
 
-(defmacro org-re (s)
+(defmacro org-re (&rest strs)
   "Replace posix classes in regular expression."
   (declare (debug (form)))
-  (if (featurep 'xemacs) `(org-substitute-posix-classes ,s) s))
+  (if (featurep 'xemacs) `(org-substitute-posix-classes ,(apply 'concat strs)) `(concat ,@strs)))
 
 (defmacro org-preserve-lc (&rest body)
   (declare (debug (body)))

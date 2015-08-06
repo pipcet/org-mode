@@ -2827,7 +2827,9 @@ TIME:      The sum of all time spend in this tree, in minutes.  This time
 	(when (setq time (get-text-property p :org-clock-minutes))
 	  (save-excursion
 	    (beginning-of-line 1)
-	    (when (and (looking-at (org-re "\\(\\*+\\)[ \t]+\\(.*?\\)\\([ \t]+:[[:alnum:]_@#%:]+:\\)?[ \t]*$"))
+	    (when (and (looking-at (org-re "\\(\\*+\\)[ \t]+\\(.*?\\)\\([ \t]+"
+					   org-heading-tags-re
+					   "\\)?[ \t]*$"))
 		       (setq level (org-reduced-level
 				    (- (match-end 1) (match-beginning 1))))
 		       (<= level maxlevel))

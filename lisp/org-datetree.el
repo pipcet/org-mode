@@ -73,7 +73,9 @@ tree can be found."
 
 (defun org-datetree-find-year-create (year)
   "Find the YEAR datetree or create it."
-  (let ((re "^\\*+[ \t]+\\([12][0-9]\\{3\\}\\)\\(\\s-*?\\([ \t]:[[:alnum:]:_@#%]+:\\)?\\s-*$\\)")
+  (let ((re (org-re "^\\*+[ \t]+\\([12][0-9]\\{3\\}\\)\\(\\s-*?\\([ \t]"
+		    org-heading-tags-re
+		    "\\)?\\s-*$\\)"))
 	match)
     (goto-char (point-min))
     (while (and (setq match (re-search-forward re nil t))
