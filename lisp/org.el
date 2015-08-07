@@ -16081,6 +16081,26 @@ is set.")
       (and (looking-at "^\\(\\*+\\)")
 	   (length (match-string 1))))))
 
+(defun org-numberize (f)
+  `(lambda (&rest args)
+     (let* ((number (apply (quote ,f) (mapcar 'string-to-number args)))
+	    (string (if number (number-to-string number) nil)))
+       string)))
+
+(defun org-mean (&rest args)
+  (if (> (length args) 0)
+      (/ (float (apply '+ args)) (length args))))
+
+(defun org-unique (&rest args)
+  (if (org-all-equal args) (car args)))
+
+(defun org-compactor-function (local)
+  (if (and local (string-match-p "\\^" local))
+      (cond ((equal local "sum(^)") (org-numberize '+))
+	    ((equal local "mean(^)") (org-numberize #'org-mean))
+	    ((equal local "unique(^)") 'org-unique)
+	    (t (error "unknown compactor function %s" local)))))
+
 (defun org-entry-get-with-inheritance (property &optional literal-nil)
   "Get PROPERTY of entry or content at point, search higher levels if needed.
 The search will stop at the first ancestor which has the property defined.
