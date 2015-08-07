@@ -15903,7 +15903,7 @@ strings."
 	  ;; Return value.
 	  (append (get-text-property beg 'org-summaries) props))))))
 
-(defun org-property--local-values (property literal-nil)
+(defun org-drawer-property--local-values (property literal-nil)
   "Return value for PROPERTY in current entry.
 Value is a list whose care is the base value for PROPERTY and cdr
 a list of accumulated values.  Return nil if neither is found in
@@ -15927,6 +15927,16 @@ unless LITERAL-NIL is non-nil."
 	    (push (org-match-string-no-properties 3) value)))
 	;; Return final values.
 	(and (not (equal value '(nil))) (nreverse value))))))
+
+(defun org-line-property--local-values (property literal-nil)
+  (save-excursion
+    (org-back-to-heading)
+    (let ((tvs (org-get-line-properties (point))))
+      (delq nil (list (cdr (assoc (downcase property) tvs)))))))
+
+(defun org-property--local-values (property literal-nil)
+  (append (org-line-property--local-values property literal-nil)
+	  (org-drawer-property--local-values property literal-nil)))
 
 (defun org-entry-get (pom property &optional inherit literal-nil)
   "Get value of PROPERTY for entry or content at point-or-marker POM.
