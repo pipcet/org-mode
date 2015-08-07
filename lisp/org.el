@@ -16068,6 +16068,19 @@ no match, the marker will point nowhere.
 Note that also `org-entry-get' calls this function, if the INHERIT flag
 is set.")
 
+(defun org-all-equal (values)
+  (if (<= (length values) 1)
+      t
+    (and (equal (car values) (cadr values))
+	 (org-all-equal (cdr values)))))
+
+(defun org-get-level ()
+  (save-excursion
+    (beginning-of-line)
+    (save-match-data
+      (and (looking-at "^\\(\\*+\\)")
+	   (length (match-string 1))))))
+
 (defun org-entry-get-with-inheritance (property &optional literal-nil)
   "Get PROPERTY of entry or content at point, search higher levels if needed.
 The search will stop at the first ancestor which has the property defined.
