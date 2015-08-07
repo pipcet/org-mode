@@ -15569,6 +15569,30 @@ Modifications are made by side-effect.  Return new alist."
       (setcdr old (if appending (concat (cdr old) " " val) val))
       props)))
 
+(defun org-get-property-line (&optional beg)
+  (org-with-wide-buffer
+   (when beg (goto-char beg))
+   (unless (org-before-first-heading-p)
+     (if (looking-at (org-re "^\*.*[ \t]+"
+			     org-heading-tags-re
+			     "[ \t]*$"))
+	 (match-string-no-properties 1)
+       ""))))
+
+(defun org-get-line-properties (&optional beg)
+  (if (null beg) (setq beg (point)))
+  (let* ((line (org-get-property-line beg))
+	 (tags (org-split-string line ":"))
+	 (tvs (mapcar (lambda (x)
+			(message "x %S" x)
+			(let ((s (org-split-string x "=")))
+			  (if (> (length s) 1)
+                              (cons (car s) (cadr s))
+			    (cons (car s) "TRUE"))))
+                      tags)))
+    (message "tags %S" tags)
+    tvs))
+
 (defun org-get-property-block (&optional beg force)
   "Return the (beg . end) range of the body of the property drawer.
 BEG is the beginning of the current subtree, or of the part
