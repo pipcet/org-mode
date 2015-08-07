@@ -16101,6 +16101,51 @@ is set.")
 	    ((equal local "unique(^)") 'org-unique)
 	    (t (error "unknown compactor function %s" local)))))
 
+(defun org-walk-document-reverse-inheritance (limit level property &optional literal-nil function)
+  (setq function (or function (org-numberize 'org-mean)))
+  (let ((res nil)
+	(beg nil))
+    (if (org-before-first-heading-p)
+	(outline-next-heading))
+    (setq beg (point))
+    (while
+	(and (< (point) limit)
+	     (let* ((locals (org-property--local-values property literal-nil))
+		    (org-level (org-get-level))
+		    (f (org-compactor-function (car locals))))
+	       (message "org-level %S" org-level)
+	       (cond ((null org-level) nil)
+		     ((< org-level level)
+		      nil)
+		     ((and (not f) locals (= org-level level))
+		      (setq res (append res locals))
+		      (outline-next-heading)
+		      nil)
+		     ((= org-level level)
+		      (outline-next-heading)
+		      (let* (results)
+			(while (let ((result (org-walk-document-reverse-inheritance limit (1+ org-level) property literal-nil (org-compactor-function "mean(^)"))))
+				 (setq results (append results result))
+				 result))
+			(setq res (append res results)))
+		      nil)
+		     ((> org-level level)
+		      (let* (results)
+			(while (let ((result (org-walk-document-reverse-inheritance limit org-level property literal-nil (org-compactor-function "mean(^)"))))
+				 (setq results (append results result))
+				 result))
+			(when (and results beg)
+			  ;; (save-excursion
+			  ;;   (goto-char beg)
+			  ;;   (setq beg nil)
+			  ;;   (end-of-line)
+			  ;;   (let ((o (make-overlay (point-at-bol) (point-at-eol))))
+			  ;;     (overlay-put o 'after-string results)))
+			  (setq res (append res results))
+			  t)))))))
+    (let ((r (if res (apply function res))))
+      (if r (list r) nil))))
+
 (defun org-entry-get-with-inheritance (property &optional literal-nil)
   "Get PROPERTY of entry or content at point, search higher levels if needed.
 The search will stop at the first ancestor which has the property defined.
@@ -16112,7 +16157,10 @@ However, if LITERAL-NIL is set, return the string value \"nil\" instead."
    (let (value)
      (catch 'exit
        (while t
-	 (let ((v (org-property--local-values property literal-nil)))
+	 (let ((v (save-excursion
+		    ;;(org-back-to-heading t)
+		    (org-walk-document-reverse-inheritance
+		     (point-max) (org-get-level) property literal-nil))))
 	   (when v
 	     (setq value
 		   (concat (mapconcat #'identity (delq nil v) " ")
