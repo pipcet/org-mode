@@ -521,7 +521,7 @@ but the stars and the body are.")
 ;; expression, and necessary when it is being treated as a format
 ;; string
 (defconst org-heading-tags-re
-  "\\(:\\([[:alnum:]_@#%%:=^()]+\\):\\)"
+  "\\(:\\([[:alnum:]_@#%%:=^().]+\\):\\)"
   "The regular expression matching the tags in an org headline.
 The first match-string produced is the entire tags expression,
 the second match-string is everything inside the outer pair of
