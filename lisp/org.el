@@ -521,7 +521,7 @@ but the stars and the body are.")
 ;; expression, and necessary when it is being treated as a format
 ;; string
 (defconst org-heading-tags-re
-  "\\(:\\([[:alnum:]_@#%%:=^().]+\\):\\)"
+  "\\(:[[:alnum:]_@#%%:=^().]+:\\)"
   "The regular expression matching the tags in an org headline.
 The first match-string produced is the entire tags expression,
 the second match-string is everything inside the outer pair of
@@ -14898,12 +14898,12 @@ If ONOFF is `on' or `off', don't toggle but set to this state."
     (if	(and (looking-at (org-re ".*?\\([ \t]+\\)"
 				 org-heading-tags-re
 				 "[ \t]*$"))
-	     (< pos (match-beginning 2)))
+	     (<= pos (match-beginning 1)))
 	(progn
-	  (setq tags-l (- (match-end 2) (match-beginning 2)))
+	  (setq tags-l (- (match-end 1) (match-beginning 1) 2))
 	  (goto-char (match-beginning 1))
 	  (insert " ")
-	  (delete-region (point) (1+ (match-beginning 2)))
+	  (delete-region (point) (match-beginning 1))
 	  (setq ncol (max (current-column)
 			  (1+ col)
 			  (if (> to-col 0)
