@@ -16090,6 +16090,12 @@ is set.")
     (and (equal (car values) (cadr values))
 	 (org-all-equal (cdr values)))))
 
+(defun org-all-string-equal (values)
+  (if (<= (length values) 1)
+      t
+    (and (string-equal (car values) (cadr values))
+	 (org-all-string-equal (cdr values)))))
+
 (defun org-get-level ()
   (save-excursion
     (beginning-of-line)
