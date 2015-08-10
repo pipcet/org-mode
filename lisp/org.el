@@ -521,11 +521,9 @@ but the stars and the body are.")
 ;; expression, and necessary when it is being treated as a format
 ;; string
 (defconst org-heading-tags-re
-  "\\(:[[:alnum:]_@#%%:=^().]+:\\)"
+  "\\(\\(?::[[:alnum:]_@#%%:=^().]+:\\|\\[[[:alnum:]_@#%%]+:[ +=?(%%]\\(?:[^][\\\\]\\|\\\\.\\)*\\]\\)+\\)"
   "The regular expression matching the tags in an org headline.
-The first match-string produced is the entire tags expression,
-the second match-string is everything inside the outer pair of
-colons.")
+The match-string produced is the entire tags expression.")
 
 (defconst org-archive-tag "ARCHIVE"
   "The tag that marks a subtree as archived.
@@ -4812,17 +4810,17 @@ group 1: the stars
 group 2: The todo keyword, maybe
 group 3: Priority cookie
 group 4: True headline
-group 5: Tags")
+group 5: Tags and properties")
 (make-variable-buffer-local 'org-complex-heading-regexp)
 (defvar org-complex-heading-regexp-format nil
   "Printf format to make regexp to match an exact headline.
 This regexp will match the headline of any node which has the
 exact headline text that is put into the format, but may have any
-TODO state, priority and tags.")
+TODO state, priority and tags and properties.")
 (make-variable-buffer-local 'org-complex-heading-regexp-format)
 (defvar org-todo-line-tags-regexp nil
   "Matches a headline and puts TODO state into group 2 if present.
-Also put tags into group 4 if tags are present.")
+Also put tags and properties into group 4 if they are present.")
 (make-variable-buffer-local 'org-todo-line-tags-regexp)
 
 (defconst org-plain-time-of-day-regexp
@@ -6251,18 +6249,75 @@ done, nil otherwise."
     (setq res (+ res (length s) (- pos)))
       res))
 
+(defun org-activate-question-property (beg end prop)
+  (let* ((p (org-entry-get-at-point prop))
+	 (repl (apply #'concat (if p (mapcar #'cadr p)
+				 (list (propertize "<undefined>" 'face '(:weight light)))))))
+    (add-text-properties (1- beg) end
+			 (list 'mouse-face 'highlight
+			       'display repl))
+    (org-string-width-real repl)))
+
+(defcustom org-activate-colon-question nil "activate :? properties")
+(defcustom org-activate-colon-equals nil "activate := properties")
+
 (defun org-activate-tags (limit)
-  (if (re-search-forward (org-re "^\\*+.*[ \t]"
-				 org-heading-tags-re
-				 "[ \r\n]")
-			 limit t)
-      (progn
-	(org-remove-flyspell-overlays-in (match-beginning 1) (match-end 1))
-	(add-text-properties (match-beginning 1) (match-end 1)
-			     (list 'mouse-face 'highlight
-				   'keymap org-mouse-map))
-	(org-rear-nonsticky-at (match-end 1))
-	t)))
+  (when (re-search-forward (org-re "^\\*+.*?"
+				   "\\([ \t]+\\)"
+				   org-heading-tags-re
+				   "[ \r\n]*$")
+			   limit t)
+    (org-remove-flyspell-overlays-in (match-beginning 1) (1+ (match-end 2)))
+    (goto-char (match-beginning 1))
+    (let ((column (current-column))
+	  width)
+      (goto-char (match-beginning 2))
+      (save-match-data
+	(let ((beg (point))
+	      (end nil)
+	      (tag nil))
+	  (while (setq tag (org-next-tag limit))
+	    (cond ((= (length tag) 1)
+		   (add-text-properties beg (point)
+					(list 'mouse-face 'highlight
+					      'keymap org-mouse-map))
+		   (org-rear-nonsticky-at (point)))
+		  ((= (length tag) 3)
+		   (beginning-of-line)
+		   (cond ((and org-activate-colon-question
+			       (equal (cadr tag) "?"))
+			  (org-activate-question-property
+			   (match-end 3) (match-end 3)
+			   (car tag)))
+			 ((and org-activate-colon-equals
+			       (equal (cadr tag) "="))
+			  (org-activate-question-property
+			   (match-end 3) (match-end 3)
+			   (car tag)))
+			  (t
+			   (add-text-properties beg (match-end 3)
+						(list 'mouse-face 'highlight
+						      'keymap org-mouse-map)))))))
+	    (setq beg (point))))
+      (goto-char (match-end 2))
+      ;; a simpler approach using (current-column) doesn't work
+      ;; because that appears to take into account some but not all
+      ;; 'display properties.
+      
+      ;; (add-text-properties (match-beginning 1) (match-end 1)
+      ;; 			   (list 'display " " 'invisible t))
+      ;; (let* ((column (current-column))
+      ;; 	     (padding (- (+ org-tags-column column)))
+      ;; 	     (dprop (make-string padding ?\ )))
+      ;; 	(add-text-properties (match-beginning 1) (match-end 1)
+      ;; 			     (list 'display dprop 'invisible nil)))
+      
+      (let* ((width (org-string-width-real (buffer-substring (match-beginning 2) (match-end 2))))
+      	     (padding (- (+ org-tags-column width column)))
+      	     (display (if (> padding 0) `(space :width ,padding) "")))
+      	(add-text-properties (match-beginning 1) (match-end 1)
+      			     (list 'display display))))
+      t))
 
 (defun org-outline-level ()
   "Compute the outline level of the heading at point.
@@ -6357,7 +6412,7 @@ needs to be inserted at a specific position in the font-lock sequence.")
 		 '(1 'org-special-keyword t)
 		 '(3 'org-property-value t))
 	   ;; Links
-	   (if (memq 'tag lk) '(org-activate-tags (1 'org-tag prepend)))
+	   (if (memq 'tag lk) '(org-activate-tags (2 'org-tag prepend)))
 	   (if (memq 'angle lk) '(org-activate-angle-links (0 'org-link t)))
 	   (if (memq 'plain lk) '(org-activate-plain-links (0 'org-link t)))
 	   (if (memq 'bracket lk) '(org-activate-bracket-links (0 'org-link t)))
@@ -10762,7 +10817,18 @@ link in a property drawer line."
 				      (looking-at org-complex-heading-regexp))
 		      (and (match-beginning 5)
 			   (>= (point) (match-beginning 5)))))
-	  (org-tags-view arg (substring (match-string 5) 0 -1)))
+	  (let ((pt (point))
+		beg tag)
+	    (goto-char (match-beginning 5))
+	    (setq beg (point))
+	    (while (setq tag (org-next-tag))
+	      (when (>= (point) pt)
+		  (cond ((= (length tag) 1)
+			 (org-tags-view arg (concat ":" (car tag))))
+			((= (length tag) 3)
+			 (org-tags-view arg (concat "[" (car tag) ":" (cadr tag) (caddr tag) "]"))))
+		  (end-of-line))
+	      (setq beg (point)))))
 	 ((eq type 'link)
 	  ;; When link is located within the description of another
 	  ;; link (e.g., an inline image), always open the parent
@@ -14953,8 +15019,7 @@ If DATA is nil or the empty string, any tags will be removed."
 	 ((eq data nil) "")
 	 ((equal data "") "")
 	 ((stringp data)
-	  (concat ":" (mapconcat 'identity (org-split-string data ":+") ":")
-		  ":"))
+	  data)
 	 ((listp data)
 	  (concat ":" (mapconcat 'identity data ":") ":"))))
   (when data
@@ -15057,9 +15122,7 @@ When JUST-ALIGN is non-nil, only align tags."
 			 org-tags-sort-function)
 		   ":")))
 
-	  (if (not (org-string-nw-p tags)) (setq tags "")
-	    (unless (string-match ":\\'" tags) (setq tags (concat tags ":")))
-	    (unless (string-match "\\`:" tags) (setq tags (concat ":" tags))))
+	  (if (not (org-string-nw-p tags)) (setq tags ""))
 
 	  ;; Insert new tags at the correct column
 	  (beginning-of-line)
@@ -15392,6 +15455,23 @@ Returns the new tags string, or nil to not change the current settings."
 	  (mapconcat 'identity current ":")
 	nil))))
 
+(defun org-next-tag (&optional limit)
+  (cond
+   ((re-search-forward "\\=:?[ \t]*$" limit t)
+    nil)
+   ((re-search-forward "\\=:\\([[:alnum:]_@#%%=^().]+\\):" limit t)
+    (backward-char)
+    (list (match-string 1)))
+   ((re-search-forward "\\=:?\\[\\([[:alnum:]_@#%%]+\\):\\([ +=?(%%]\\)\\(\\([^][\\\\]\\|\\\\.\\)*\\)\\]"
+		       limit t)
+    (list (match-string 1) (match-string 2) (match-string 3)))))
+
+(defun org-line-tags (&optional limit)
+  (let (list tag)
+    (while (setq tag (org-next-tag limit))
+      (push tag list))
+    list))
+
 (defun org-get-tags-string ()
   "Get the TAGS string in the current headline."
   (unless (org-at-heading-p t)
@@ -15406,7 +15486,7 @@ Returns the new tags string, or nil to not change the current settings."
 
 (defun org-get-tags ()
   "Get the list of tags specified in the current headline."
-  (org-split-string (org-get-tags-string) ":"))
+  (org-line-tags (point-max)))
 
 (defun org-get-buffer-tags ()
   "Get a table of all tags used in the buffer, for completion."
@@ -15416,10 +15496,11 @@ Returns the new tags string, or nil to not change the current settings."
 			 "\\(?:.*?[ \t]\\)?"
 			 (org-re org-heading-tags-re
 				 "[ \t]*$")))
-	 tags)
+	 tags tag)
      (while (re-search-forward tag-re nil t)
-       (dolist (tag (org-split-string (org-match-string-no-properties 1) ":"))
-	 (push tag tags)))
+       (goto-char (match-beginning 1))
+       (while (setq tag (org-next-tag))
+	 (push (car tag) tags)))
      (mapcar #'list (append org-file-tags (org-uniquify tags))))))
 
 ;;;; The mapping API
@@ -15595,19 +15676,24 @@ Modifications are made by side-effect.  Return new alist."
 	 (match-string-no-properties 1)
        ""))))
 
-(defun org-get-line-properties (&optional beg)
+;; returns a list of lists of 1 or three elements
+(defun org-get-line-properties (&optional beg query)
   (if (null beg) (setq beg (point)))
-  (let* ((line (org-get-property-line beg))
-	 (tags (org-split-string line ":"))
-	 (tvs (mapcar (lambda (x)
-			(message "x %S" x)
-			(let ((s (org-split-string x "=")))
-			  (if (> (length s) 1)
-                              (cons (car s) (cadr s))
-			    (cons (car s) "TRUE"))))
-                      tags)))
-    (message "tags %S" tags)
-    tvs))
+  (beginning-of-line)
+  (unless (and nil (org-before-first-heading-p)) ;; XXX
+    (when (looking-at (org-re "^\*.*[ \t]+"
+			      org-heading-tags-re
+			      "[ \t]*$"))
+      (goto-char (match-beginning 1))
+      (let (tag props)
+	(while (setq tag (org-next-tag))
+	  (cond ((= (length tag) 1)
+		 (push (list (car tag) ":" "TRUE") props))
+		((and (not query) (= (length tag) 3) (equal (cadr tag) "?"))
+		 t)
+		((= (length tag) 3)
+		 (push tag props))))
+	props))))
 
 (defun org-get-property-block (&optional beg force)
   "Return the (beg . end) range of the body of the property drawer.
@@ -15720,6 +15806,195 @@ When INCREMENT is non-nil, set the property to the next allowed value."
       (org-clock-update-mode-line))
     (message "%s is now %s" prop val)))
 
+(defun org-entry-properties-at-point (&optional which)
+  (when (and (derived-mode-p 'org-mode)
+	     (ignore-errors (org-back-to-heading t)))
+    (catch 'exit
+      (let* ((beg (point))
+	     (specific (and (stringp which) (upcase which)))
+	     (which (cond ((not specific) which)
+			  ((member specific org-special-properties) 'special)
+			  (t 'standard)))
+	     props)
+	;; Get the special properties, like TODO and TAGS.
+	(when (memq which '(nil all special))
+	  (when (or (not specific) (string= specific "CLOCKSUM"))
+	    (let ((clocksum (get-text-property (point) :org-clock-minutes)))
+	      (when clocksum
+		(push (cons "CLOCKSUM"
+			    (list " "
+				  (org-columns-number-to-string
+				   (/ (float clocksum) 60.) 'add_times)))
+		      props)))
+	    (when specific (throw 'exit props)))
+	  (when (or (not specific) (string= specific "CLOCKSUM_T"))
+	    (let ((clocksumt (get-text-property (point)
+						:org-clock-minutes-today)))
+	      (when clocksumt
+		(push (cons "CLOCKSUM_T"
+			    (list " "
+				  (org-columns-number-to-string
+				   (/ (float clocksumt) 60.) 'add_times)))
+		      props)))
+	    (when specific (throw 'exit props)))
+	  (when (or (not specific) (string= specific "ITEM"))
+	    (when (looking-at org-complex-heading-regexp)
+	      (push (cons "ITEM"
+			  (list " "
+				(concat
+				 (org-match-string-no-properties 1)
+				 (let ((title (org-match-string-no-properties 4)))
+				   (when (org-string-nw-p title)
+				     (concat " " (org-remove-tabs title)))))))
+		    props))
+	    (when specific (throw 'exit props)))
+	  (when (or (not specific) (string= specific "TODO"))
+	    (when (and (looking-at org-todo-line-regexp) (match-end 2))
+	      (push (cons "TODO" (list " " (org-match-string-no-properties 2))) props))
+	    (when specific (throw 'exit props)))
+	  (when (or (not specific) (string= specific "PRIORITY"))
+	    (when (looking-at org-priority-regexp)
+	      (push (cons "PRIORITY" (list " " (org-match-string-no-properties 2)))
+		    props))
+	    (when specific (throw 'exit props)))
+	  (when (or (not specific) (string= specific "FILE"))
+	    (push (cons "FILE" (list " " (buffer-file-name (buffer-base-buffer))))
+		  props)
+	    (when specific (throw 'exit props)))
+	  (when (or (not specific) (string= specific "TAGS"))
+	    (let ((value (org-string-nw-p (org-get-tags-string))))
+	      (when value (push (cons "TAGS" (list " " value)) props)))
+	    (when specific (throw 'exit props)))
+	  (when (or (not specific) (string= specific "ALLTAGS"))
+	    (let ((value (org-get-tags-at)))
+	      (when value
+		(push (cons "ALLTAGS"
+			    (list " " (format ":%s:" (mapconcat #'identity value ":"))))
+		      props)))
+	    (when specific (throw 'exit props)))
+	  (when (or (not specific) (string= specific "BLOCKED"))
+	    (push (cons "BLOCKED" (list " " (if (org-entry-blocked-p) "t" ""))) props)
+	    (when specific (throw 'exit props)))
+	  (when (or (not specific)
+		    (member specific '("CLOSED" "DEADLINE" "SCHEDULED")))
+	    (forward-line)
+	    (when (org-looking-at-p org-planning-line-re)
+	      (end-of-line)
+	      (let ((bol (line-beginning-position))
+		    ;; Backward compatibility: time keywords used to
+		    ;; be configurable (before 8.3).  Make sure we
+		    ;; get the correct keyword.
+		    (key-assoc `(("CLOSED" . ,org-closed-string)
+				 ("DEADLINE" . ,org-deadline-string)
+				 ("SCHEDULED" . ,org-scheduled-string))))
+		(dolist (pair (if specific (list (assoc specific key-assoc))
+				key-assoc))
+		  (save-excursion
+		    (when (search-backward (cdr pair) bol t)
+		      (goto-char (match-end 0))
+		      (skip-chars-forward " \t")
+		      (and (looking-at org-ts-regexp-both)
+			   (push (cons (car pair)
+				       (list " " (org-match-string-no-properties 0)))
+				 props)))))))
+	    (when specific (throw 'exit props)))
+	  (when (or (not specific)
+		    (member specific '("TIMESTAMP" "TIMESTAMP_IA")))
+	    (let ((find-ts
+		   (lambda (end ts)
+		     (let ((regexp (cond
+				    ((string= specific "TIMESTAMP")
+				     org-ts-regexp)
+				    ((string= specific "TIMESTAMP_IA")
+				     org-ts-regexp-inactive)
+				    ((assoc "TIMESTAMP_IA" ts)
+				     org-ts-regexp)
+				    ((assoc "TIMESTAMP" ts)
+				     org-ts-regexp-inactive)
+				    (t org-ts-regexp-both))))
+		       (catch 'next
+			 (while (re-search-forward regexp end t)
+			   (backward-char)
+			   (let ((object (org-element-context)))
+			     ;; Accept to match timestamps in node
+			     ;; properties, too.
+			     (when (memq (org-element-type object)
+					 '(node-property timestamp))
+			       (let ((type
+				      (org-element-property :type object)))
+				 (cond
+				  ((and (memq type '(active active-range))
+					(not (equal specific "TIMESTAMP_IA")))
+				   (unless (assoc "TIMESTAMP" ts)
+				     (push (cons "TIMESTAMP"
+						 (list " " (org-element-property
+							    :raw-value object)))
+					   ts)
+				     (when specific (throw 'exit ts))))
+				  ((and (memq type '(inactive inactive-range))
+					(not (string= specific "TIMESTAMP")))
+				   (unless (assoc "TIMESTAMP_IA" ts)
+				     (push (cons "TIMESTAMP_IA"
+						 (list " " (org-element-property
+							    :raw-value object)))
+					   ts)
+				     (when specific (throw 'exit ts))))))
+			       ;; Both timestamp types are found,
+			       ;; move to next part.
+			       (when (= (length ts) 2) (throw 'next ts)))))
+			 ts)))))
+	      (goto-char beg)
+	      ;; First look for timestamps within headline.
+	      (let ((ts (funcall find-ts (line-end-position) nil)))
+		(if (= (length ts) 2) (setq props (nconc ts props))
+		  (forward-line)
+		  ;; Then find timestamps in the section, skipping
+		  ;; planning line.
+		  (when (org-looking-at-p org-planning-line-re)
+		    (forward-line))
+		  (let ((end (save-excursion (outline-next-heading))))
+		    (setq props (nconc (funcall find-ts end ts) props))))))))
+	;; Get the standard properties, like :PROP:.
+	(when (memq which '(nil all standard))
+	  ;; If we are looking after a specific property, delegate
+	  ;; to `org-entry-get', which is faster.  However, make an
+	  ;; exception for "CATEGORY", since it can be also set
+	  ;; through keywords (i.e. #+CATEGORY).
+	  (if (and specific (not (equal specific "CATEGORY")))
+	      (let ((value (org-entry-get beg specific nil t)))
+		(throw 'exit (and value (list (cons specific value)))))
+	    (let ((range (org-get-property-block beg)))
+	      (when range
+		(let ((end (cdr range)) seen-base)
+		  (goto-char (car range))
+		  ;; Unlike to `org--update-property-plist', we
+		  ;; handle the case where base values is found
+		  ;; after its extension.  We also forbid standard
+		  ;; properties to be named as special properties.
+		  (while (re-search-forward org-property-re end t)
+		    (let* ((key (upcase (org-match-string-no-properties 2)))
+			   (extendp (org-string-match-p "\\+\\'" key))
+			   (key-base (if extendp (substring key 0 -1) key))
+			   (value (org-match-string-no-properties 3)))
+		      (cond
+		       ((member-ignore-case key-base org-special-properties))
+		       (extendp
+			(setq props
+			      (org--update-property-plist key value props)))
+		       ((member key seen-base))
+		       (t (push key seen-base)
+			  (let ((p (assoc-string key props t)))
+			    (if p (setcdr p (concat value " " (cdr p)))
+			      (push (cons key (list " " value)) props))))))))))
+	    (dolist (p (org-get-line-properties))
+	      (push p props))))
+	(unless (assoc "CATEGORY" props)
+	  (push (cons "CATEGORY" (list " " (org-get-category beg))) props)
+	  (when (string= specific "CATEGORY") (throw 'exit props)))
+	;; Return value.
+	(outline-next-heading)
+	(append (get-text-property beg 'org-summaries) props)))))
+
 (defun org-entry-properties (&optional pom which)
   "Get all properties of the current entry.
 
@@ -15737,187 +16012,7 @@ a string, only get that property.
 Return value is an alist.  Keys are properties, as upcased
 strings."
   (org-with-point-at pom
-    (when (and (derived-mode-p 'org-mode)
-	       (ignore-errors (org-back-to-heading t)))
-      (catch 'exit
-	(let* ((beg (point))
-	       (specific (and (stringp which) (upcase which)))
-	       (which (cond ((not specific) which)
-			    ((member specific org-special-properties) 'special)
-			    (t 'standard)))
-	       props)
-	  ;; Get the special properties, like TODO and TAGS.
-	  (when (memq which '(nil all special))
-	    (when (or (not specific) (string= specific "CLOCKSUM"))
-	      (let ((clocksum (get-text-property (point) :org-clock-minutes)))
-		(when clocksum
-		  (push (cons "CLOCKSUM"
-			      (org-columns-number-to-string
-			       (/ (float clocksum) 60.) 'add_times))
-			props)))
-	      (when specific (throw 'exit props)))
-	    (when (or (not specific) (string= specific "CLOCKSUM_T"))
-	      (let ((clocksumt (get-text-property (point)
-						  :org-clock-minutes-today)))
-		(when clocksumt
-		  (push (cons "CLOCKSUM_T"
-			      (org-columns-number-to-string
-			       (/ (float clocksumt) 60.) 'add_times))
-			props)))
-	      (when specific (throw 'exit props)))
-	    (when (or (not specific) (string= specific "ITEM"))
-	      (when (looking-at org-complex-heading-regexp)
-		(push (cons "ITEM"
-			    (concat
-			     (org-match-string-no-properties 1)
-			     (let ((title (org-match-string-no-properties 4)))
-			       (when (org-string-nw-p title)
-				 (concat " " (org-remove-tabs title))))))
-		      props))
-	      (when specific (throw 'exit props)))
-	    (when (or (not specific) (string= specific "TODO"))
-	      (when (and (looking-at org-todo-line-regexp) (match-end 2))
-		(push (cons "TODO" (org-match-string-no-properties 2)) props))
-	      (when specific (throw 'exit props)))
-	    (when (or (not specific) (string= specific "PRIORITY"))
-	      (when (looking-at org-priority-regexp)
-		(push (cons "PRIORITY" (org-match-string-no-properties 2))
-		      props))
-	      (when specific (throw 'exit props)))
-	    (when (or (not specific) (string= specific "FILE"))
-	      (push (cons "FILE" (buffer-file-name (buffer-base-buffer)))
-		    props)
-	      (when specific (throw 'exit props)))
-	    (when (or (not specific) (string= specific "TAGS"))
-	      (let ((value (org-string-nw-p (org-get-tags-string))))
-		(when value (push (cons "TAGS" value) props)))
-	      (when specific (throw 'exit props)))
-	    (when (or (not specific) (string= specific "ALLTAGS"))
-	      (let ((value (org-get-tags-at)))
-		(when value
-		  (push (cons "ALLTAGS"
-			      (format ":%s:" (mapconcat #'identity value ":")))
-			props)))
-	      (when specific (throw 'exit props)))
-	    (when (or (not specific) (string= specific "BLOCKED"))
-	      (push (cons "BLOCKED" (if (org-entry-blocked-p) "t" "")) props)
-	      (when specific (throw 'exit props)))
-	    (when (or (not specific)
-		      (member specific '("CLOSED" "DEADLINE" "SCHEDULED")))
-	      (forward-line)
-	      (when (org-looking-at-p org-planning-line-re)
-		(end-of-line)
-		(let ((bol (line-beginning-position))
-		      ;; Backward compatibility: time keywords used to
-		      ;; be configurable (before 8.3).  Make sure we
-		      ;; get the correct keyword.
-		      (key-assoc `(("CLOSED" . ,org-closed-string)
-				   ("DEADLINE" . ,org-deadline-string)
-				   ("SCHEDULED" . ,org-scheduled-string))))
-		  (dolist (pair (if specific (list (assoc specific key-assoc))
-				  key-assoc))
-		    (save-excursion
-		      (when (search-backward (cdr pair) bol t)
-			(goto-char (match-end 0))
-			(skip-chars-forward " \t")
-			(and (looking-at org-ts-regexp-both)
-			     (push (cons (car pair)
-					 (org-match-string-no-properties 0))
-				   props)))))))
-	      (when specific (throw 'exit props)))
-	    (when (or (not specific)
-		      (member specific '("TIMESTAMP" "TIMESTAMP_IA")))
-	      (let ((find-ts
-		     (lambda (end ts)
-		       (let ((regexp (cond
-				      ((string= specific "TIMESTAMP")
-				       org-ts-regexp)
-				      ((string= specific "TIMESTAMP_IA")
-				       org-ts-regexp-inactive)
-				      ((assoc "TIMESTAMP_IA" ts)
-				       org-ts-regexp)
-				      ((assoc "TIMESTAMP" ts)
-				       org-ts-regexp-inactive)
-				      (t org-ts-regexp-both))))
-			 (catch 'next
-			   (while (re-search-forward regexp end t)
-			     (backward-char)
-			     (let ((object (org-element-context)))
-			       ;; Accept to match timestamps in node
-			       ;; properties, too.
-			       (when (memq (org-element-type object)
-					   '(node-property timestamp))
-				 (let ((type
-					(org-element-property :type object)))
-				   (cond
-				    ((and (memq type '(active active-range))
-					  (not (equal specific "TIMESTAMP_IA")))
-				     (unless (assoc "TIMESTAMP" ts)
-				       (push (cons "TIMESTAMP"
-						   (org-element-property
-						    :raw-value object))
-					     ts)
-				       (when specific (throw 'exit ts))))
-				    ((and (memq type '(inactive inactive-range))
-					  (not (string= specific "TIMESTAMP")))
-				     (unless (assoc "TIMESTAMP_IA" ts)
-				       (push (cons "TIMESTAMP_IA"
-						   (org-element-property
-						    :raw-value object))
-					     ts)
-				       (when specific (throw 'exit ts))))))
-				 ;; Both timestamp types are found,
-				 ;; move to next part.
-				 (when (= (length ts) 2) (throw 'next ts)))))
-			   ts)))))
-		(goto-char beg)
-		;; First look for timestamps within headline.
-		(let ((ts (funcall find-ts (line-end-position) nil)))
-		  (if (= (length ts) 2) (setq props (nconc ts props))
-		    (forward-line)
-		    ;; Then find timestamps in the section, skipping
-		    ;; planning line.
-		    (when (org-looking-at-p org-planning-line-re)
-		      (forward-line))
-		    (let ((end (save-excursion (outline-next-heading))))
-		      (setq props (nconc (funcall find-ts end ts) props))))))))
-	  ;; Get the standard properties, like :PROP:.
-	  (when (memq which '(nil all standard))
-	    ;; If we are looking after a specific property, delegate
-	    ;; to `org-entry-get', which is faster.  However, make an
-	    ;; exception for "CATEGORY", since it can be also set
-	    ;; through keywords (i.e. #+CATEGORY).
-	    (if (and specific (not (equal specific "CATEGORY")))
-		(let ((value (org-entry-get beg specific nil t)))
-		  (throw 'exit (and value (list (cons specific value)))))
-	      (let ((range (org-get-property-block beg)))
-		(when range
-		  (let ((end (cdr range)) seen-base)
-		    (goto-char (car range))
-		    ;; Unlike to `org--update-property-plist', we
-		    ;; handle the case where base values is found
-		    ;; after its extension.  We also forbid standard
-		    ;; properties to be named as special properties.
-		    (while (re-search-forward org-property-re end t)
-		      (let* ((key (upcase (org-match-string-no-properties 2)))
-			     (extendp (org-string-match-p "\\+\\'" key))
-			     (key-base (if extendp (substring key 0 -1) key))
-			     (value (org-match-string-no-properties 3)))
-			(cond
-			 ((member-ignore-case key-base org-special-properties))
-			 (extendp
-			  (setq props
-				(org--update-property-plist key value props)))
-			 ((member key seen-base))
-			 (t (push key seen-base)
-			    (let ((p (assoc-string key props t)))
-			      (if p (setcdr p (concat value " " (cdr p)))
-				(push (cons key value) props))))))))))))
-	  (unless (assoc "CATEGORY" props)
-	    (push (cons "CATEGORY" (org-get-category beg)) props)
-	    (when (string= specific "CATEGORY") (throw 'exit props)))
-	  ;; Return value.
-	  (append (get-text-property beg 'org-summaries) props))))))
+    (org-entry-properties-at-point which)))
 
 (defun org-drawer-property--local-values (property literal-nil)
   "Return value for PROPERTY in current entry.
@@ -15940,19 +16035,30 @@ unless LITERAL-NIL is non-nil."
 	;; Find additional values.
 	(let* ((property+ (org-re-property (concat property "+") nil t)))
 	  (while (re-search-forward property+ end t)
-	    (push (org-match-string-no-properties 3) value)))
+	    (push (list ":" (org-match-string-no-properties 3)) value)))
 	;; Return final values.
 	(and (not (equal value '(nil))) (nreverse value))))))
 
+;; returns a list of lists of two values
 (defun org-line-property--local-values (property literal-nil)
   (save-excursion
-    (org-back-to-heading)
-    (let ((tvs (org-get-line-properties (point))))
+    (beginning-of-line)
+    (let ((tvs (org-get-line-properties (point) t)))
       (delq nil (list (cdr (assoc (downcase property) tvs)))))))
 
 (defun org-property--local-values (property literal-nil)
   (append (org-line-property--local-values property literal-nil)
-	  (org-drawer-property--local-values property literal-nil)))
+	  (save-excursion (org-drawer-property--local-values property literal-nil))))
+
+(defun org-entry-get-at-point (property &optional literal-nil min-level)
+  (when (or (null min-level) (equal (org-get-level) min-level))
+    (cond
+     ((member-ignore-case property (cons "CATEGORY" org-special-properties))
+      ;; We need a special property.  Use `org-entry-properties' to
+      ;; retrieve it, but specify the wanted property.
+      (list (cdr (assoc-string property (org-entry-properties-at-point property)))))
+     (t
+      (org-entry-get-with-inheritance property literal-nil)))))
 
 (defun org-entry-get (pom property &optional inherit literal-nil)
   "Get value of PROPERTY for entry or content at point-or-marker POM.
@@ -15972,18 +16078,7 @@ a string, do not interpret it as the list atom nil.  This is used
 for inheritance when a \"nil\" value can supersede a non-nil
 value higher up the hierarchy."
   (org-with-point-at pom
-    (cond
-     ((member-ignore-case property (cons "CATEGORY" org-special-properties))
-      ;; We need a special property.  Use `org-entry-properties' to
-      ;; retrieve it, but specify the wanted property.
-      (cdr (assoc-string property (org-entry-properties nil property))))
-     ((and inherit
-	   (or (not (eq inherit 'selective)) (org-property-inherit-p property)))
-      (org-entry-get-with-inheritance property literal-nil))
-     (t
-      (let* ((local (org-property--local-values property literal-nil))
-	     (value (and local (mapconcat #'identity (delq nil local) " "))))
-	(if literal-nil value (org-not-nil value)))))))
+    (org-entry-get-at-point property literal-nil)))
 
 (defun org-property-or-variable-value (var &optional inherit)
   "Check if there is a property fixing the value of VAR.
@@ -16105,91 +16200,154 @@ is set.")
 
 (defun org-numberize (f)
   `(lambda (&rest args)
-     (let* ((number (apply (quote ,f) (mapcar 'string-to-number args)))
+     (let* ((number (car (apply (quote ,f) (mapcar 'string-to-number args))))
 	    (string (if number (number-to-string number) nil)))
-       string)))
+       (list string))))
 
-(defun org-mean (&rest args)
-  (if (> (length args) 0)
-      (/ (float (apply '+ args)) (length args))))
+(defun org-compactor:sum (&rest values)
+  (let* ((sum 0)
+	 value)
+    (while values
+      (let* ((value (car values))
+	     (string (cadr value))
+	     (number (string-to-number string)))
+	(setq sum (+ sum number))
+	(setq values (cdr values))))
+    (list (list " " (number-to-string sum)))))
 
-(defun org-unique (&rest args)
-  (if (org-all-equal args) (car args)))
+(defun org-compactor:unique (&rest args)
+  (and args (org-all-equal (mapcar #'cadr args)) (list (car args))))
 
-(defun org-compactor-function (local)
-  (if (and local (string-match-p "\\^" local))
-      (cond ((equal local "sum(^)") (org-numberize '+))
-	    ((equal local "mean(^)") (org-numberize #'org-mean))
-	    ((equal local "unique(^)") 'org-unique)
-	    (t (error "unknown compactor function %s" local)))))
+(defun org-compactor:first (&rest args)
+  (if args (list (car args))))
 
-(defun org-walk-document-reverse-inheritance (limit level property &optional literal-nil function)
-  (setq function (or function (org-numberize 'org-mean)))
-  (let ((res nil)
-	(beg nil))
-    (if (org-before-first-heading-p)
-	(outline-next-heading))
-    (setq beg (point))
-    (while
-	(and (< (point) limit)
-	     (let* ((locals (org-property--local-values property literal-nil))
-		    (org-level (org-get-level))
-		    (f (org-compactor-function (car locals))))
-	       (message "org-level %S" org-level)
-	       (cond ((null org-level) nil)
-		     ((< org-level level)
-		      nil)
-		     ((and (not f) locals (= org-level level))
-		      (setq res (append res locals))
-		      (outline-next-heading)
-		      nil)
-		     ((= org-level level)
-		      (outline-next-heading)
-		      (let* (results)
-			(while (let ((result (org-walk-document-reverse-inheritance limit (1+ org-level) property literal-nil (org-compactor-function "mean(^)"))))
-				 (setq results (append results result))
-				 result))
-			(setq res (append res results)))
-		      nil)
-		     ((> org-level level)
-		      (let* (results)
-			(while (let ((result (org-walk-document-reverse-inheritance limit org-level property literal-nil (org-compactor-function "mean(^)"))))
-				 (setq results (append results result))
-				 result))
-			(when (and results beg)
-			  ;; (save-excursion
-			  ;;   (goto-char beg)
-			  ;;   (setq beg nil)
-			  ;;   (end-of-line)
-			  ;;   (let ((o (make-overlay (point-at-bol) (point-at-eol))))
-			  ;;     (overlay-put o 'after-string results)))
-			  (setq res (append res results))
-			  t)))))))
-    (let ((r (if res (apply function res))))
-      (if r (list r) nil))))
+(defun org-compactor:mean (&rest values)
+  (let* ((sum 0)
+	 (count 0))
+    (dolist (value values)
+      (let* ((string (cadr value))
+	     (number (string-to-number string)))
+	(setq sum (+ sum number))
+	(setq count (1+ count))
+	(setq values (cdr values))))
+    (if (> count 0)
+	(list (list " " (number-to-string (/ sum (float count)))))
+      nil)))
 
-(defun org-entry-get-with-inheritance (property &optional literal-nil)
+(defun org-compactor:dwim (&rest values)
+  (when values
+    (cond ((member-ignore-case (caar values) '("=" "("))
+	   (list (car values)))
+	  (t
+	   (apply #'org-compactor:unique values)))))
+
+(defun org-compactor-context (property elisp)
+  `(lambda (&rest values)
+     (let* ((org-point (point))
+	    (property ,property)
+	    (n 0)
+	    xs strings)
+       (dolist (value values)
+	 (when (equal (car value) " ")
+	   (push (float (string-to-number (cadr value))) xs)
+	   (push (cadr value) strings)
+	   (setq n (1+ n))))
+       (cl-flet ((get-property `(lambda (prop)
+				 (org-with-point-at ,(quote org-point)
+				   (org-entry-get-at-point prop))))
+		 (get-property-n (lambda (prop)
+				   (org-with-point-at org-point
+				     (float
+				      (string-to-number (cadr (org-entry-get-at-point prop))))))))
+	 (let ((res (condition-case err ,elisp
+		      ('error (list (list "!" (format "%S" (car err))))))))
+	   (cond ((numberp res) (list (list " " (number-to-string res))))
+		 ((stringp res) (list (list " " res)))
+		 ((listp res) res)
+		 ((functionp res) (apply res values))
+		 (t (error "don't know what to do with %S" res))))))))
+
+;; returns a function accepting a list of values and returning a list of values
+(defun org-compactor-function (locals)
+  (cond ((equal (caar locals) "=")
+	 (let* ((fn (cadar locals))
+		(symbol (intern (concat "org-compactor:" fn))))
+	   (save-match-data
+	     (if (string-match "\\([^(]*\\)(\\(.*?\\))" fn)
+		 (let ((f (org-compactor-function (list (list "=" (match-string 1 fn)))))
+		       (g (org-compactor-function (list (list "=" (match-string 2 fn))))))
+		   (cons `(lambda (&rest args) (apply ',(car f) (apply ',(car g) args)))
+			 (cdr g)))
+	       (cond ((fboundp symbol)
+		      (cons (symbol-function symbol) nil))
+		     ((equal fn "sum")
+		      (cons #'org-compactor:sum nil))
+		     ((equal fn "unique")
+		      (cons #'org-compactor:unique nil))
+		     (t
+		      (cons #'list fn)))))))
+	((equal (caar locals) "(")
+	 (let* ((elisp (concat "(" (cadar locals)))
+		(code (read elisp))
+		(f (org-compactor-context "unknownbecauseimessedup" code))
+		(p nil))
+	   (cons f p)))))
+
+(defun org-entry-get-with-reverse-inheritance (property &optional f literal-nil min-level)
+  ;;(if (org-before-first-heading-p)
+  ;;    (outline-next-heading))
+  (unless min-level (setq min-level (org-get-level)))
+  (and
+   min-level
+   (not (eobp))
+   (equal (org-get-level) min-level)
+   (let* ((locals (and (not (eolp)) (org-property--local-values property literal-nil)))
+	  (cvalue nil)
+	  (args nil))
+     (dolist (local locals)
+       (if (equal (car local) " ")
+	   (setq args (append args (list local)))))
+     (outline-next-heading)
+     (while (equal (org-get-level) (1+ min-level))
+       (setq cvalue
+	     (org-entry-get-with-reverse-inheritance property f literal-nil (1+ min-level)))
+       (if cvalue (setq args (append args cvalue))))
+     (cond (f
+	    (apply f args))
+	   (args
+	    (or (apply #'org-compactor:dwim args) locals))
+	   (t
+	    locals)))))
+
+(defun org-entry-get-with-inheritance-1 (property &optional literal-nil value-or-definition)
   "Get PROPERTY of entry or content at point, search higher levels if needed.
 The search will stop at the first ancestor which has the property defined.
 If the value found is \"nil\", return nil to show that the property
 should be considered as undefined (this is the meaning of nil here).
 However, if LITERAL-NIL is set, return the string value \"nil\" instead."
   (move-marker org-entry-property-inherited-from nil)
+  (setq value-or-definition (or value-or-definition 'value-or-definition))
+  (setq property (downcase property))
   (org-with-wide-buffer
    (let (value)
      (catch 'exit
        (while t
 	 (let ((v (save-excursion
-		    ;;(org-back-to-heading t)
-		    (org-walk-document-reverse-inheritance
-		     (point-max) (org-get-level) property literal-nil))))
-	   (when v
-	     (setq value
-		   (concat (mapconcat #'identity (delq nil v) " ")
-			   (and value " ")
-			   value)))
+		    (org-entry-get-with-reverse-inheritance
+		     property nil literal-nil))))
+	   (if (memq value-or-definition '(value value-or-definition))
+	       (dolist (tag v)
+		 (and tag
+		      (equal (car tag) " ")
+		      (setq value (append (list tag) value)))))
+	   (if (and (not value)
+		    (memq value-or-definition '(definition value-or-definition)))
+	       (dolist (tag v)
+		 (and tag
+		      (member-ignore-case (car tag) '("=" "("))
+		      (setq value (append (list tag) value)))))
 	   (cond
-	    ((car v)
+	    (value
 	     (org-back-to-heading t)
 	     (move-marker org-entry-property-inherited-from (point))
 	     (throw 'exit nil))
@@ -16200,9 +16358,39 @@ However, if LITERAL-NIL is set, return the string value \"nil\" instead."
 			     (assoc-string property org-global-properties t)
 			     (assoc-string property org-global-properties-fixed t)))))
 	       (cond ((not global))
-		     (value (setq value (concat global " " value)))
-		     (t (setq value global))))
+		     (value (setq value (list " " (concat global " " value))))
+		     (t (setq value (list " " global)))))
 	     (throw 'exit nil))))))
+     (if literal-nil value (org-not-nil value)))))
+
+(defun org-entry-get-with-inheritance (property &optional literal-nil value-or-definition)
+  "Get PROPERTY of entry or content at point, search higher levels if needed.
+The search will stop at the first ancestor which has the property defined.
+If the value found is \"nil\", return nil to show that the property
+should be considered as undefined (this is the meaning of nil here).
+However, if LITERAL-NIL is set, return the string value \"nil\" instead."
+  (move-marker org-entry-property-inherited-from nil)
+  (setq value-or-definition (or value-or-definition 'value))
+  (setq property (downcase property))
+  (org-with-wide-buffer
+   (let ((value (save-excursion
+		  (org-entry-get-with-inheritance-1 property literal-nil 'value-or-definition))))
+
+     (if (and value
+	      (member-ignore-case (caar value) '("=" "("))
+	      (memq value-or-definition '(value value-or-definition)))
+	 (let* ((cf (org-compactor-function value))
+		(f (car cf))
+		(cproperty (downcase (or (cdr cf) property)))
+		(newvalue nil)
+		(v2 (save-excursion
+		      (beginning-of-line)
+		      (org-entry-get-with-reverse-inheritance property f literal-nil))))
+	   (dolist (tag v2)
+	     (and tag
+		  (equal (car tag) " ")
+		  (setq newvalue (append (list tag) newvalue))))
+	   (setq value (or newvalue nil))))
      (if literal-nil value (org-not-nil value)))))
 
 (defvar org-property-changed-functions nil
