@@ -936,7 +936,7 @@ Assume point is at beginning of the headline."
 			(line-end-position)
 			'move)
 		   (goto-char (match-beginning 0))
-		   (org-split-string (match-string 1) ":")))
+		   (org-split-string (match-string 0) ":")))
 	   (title-end (point))
 	   (raw-value (org-trim
 		       (buffer-substring-no-properties title-start title-end)))
