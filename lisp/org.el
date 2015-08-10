@@ -6235,6 +6235,22 @@ done, nil otherwise."
     (font-lock-mode -1)
     (font-lock-mode 1)))
 
+;; determine the width a string will actually take up when printed,
+;; taking into account simple 'display text properties.
+(defun org-string-width-real (s)
+  (let ((res 0)
+	(pos 0)
+	(pos1 0)
+	(pos2 0))
+    (while (and (< pos (length s))
+		(when (setq pos1 (next-single-property-change pos 'display s))
+		  (setq pos2 (next-single-property-change pos1 'display s))
+		  (setq res (+ res (string-width (substring s pos pos1))))
+		  (setq res (+ res (org-string-width-real (get-text-property pos1 'display s))))
+		  (setq pos pos2))))
+    (setq res (+ res (length s) (- pos)))
+      res))
+
 (defun org-activate-tags (limit)
   (if (re-search-forward (org-re "^\\*+.*[ \t]"
 				 org-heading-tags-re
