@@ -202,7 +202,7 @@ This is the compiled version of the format.")
 	       (fm (nth 4 column))
 	       (fc (nth 5 column))
 	       (calc (nth 7 column))
-	       (val (or (cdr ass) ""))
+	       (val (or (cadadr ass) ""))
 	       (modval
 		(cond
 		 ((functionp org-columns-modify-value-for-display-function)
@@ -506,7 +506,8 @@ Where possible, use the standard interface for changing this line."
 	  txt2)
       (if (string-match (org-re "[ \t]+"
 				org-heading-tags-re
-				"[ \t]*$") txt)
+				"[ \t]*$")
+			txt)
 	  (setq post (match-string 0 txt)
 		txt (substring txt 0 (match-beginning 0))))
       (setq txt2 (read-string "Edit: " txt))
@@ -910,7 +911,7 @@ display, or in the #+COLUMNS line of the current buffer."
 			   (let ((prop (car x)))
 			     (mapcar
 			      (lambda (y)
-				(length (or (cdr (assoc-string prop (cdr y) t))
+				(length (or (cadadr (assoc-string prop (cdr y) t))
 					    " ")))
 			      cache)))))
 	  rtn)
@@ -1485,8 +1486,9 @@ This will add overlays to the date lines, to show the summary for each day."
 			     calc (or (nth 7 f) 'identity))
 		       (cond
 			((equal prop "ITEM")
-			 (cons prop (buffer-substring (point-at-bol)
-						      (point-at-eol))))
+			 (cons prop (list " "
+					  (buffer-substring (point-at-bol)
+							    (point-at-eol)))))
 			((not stype) (cons prop ""))
 			(t ;; do the summary
 			 (setq lsum nil)
